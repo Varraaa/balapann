@@ -1,0 +1,6 @@
+{
+  "name": "Apex Racer 2D",
+  "description": "Game balap mobil 2D realistis dengan simulasi fisika transfer bobot, suhu ban & rem berpijar, mode Split-Screen 2 pemain dan Mabar Online WebRTC.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
