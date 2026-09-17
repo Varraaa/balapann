@@ -5,7 +5,8 @@
 import React, { useState } from 'react';
 import { CarStats } from '../types/game';
 import { AVAILABLE_CARS } from '../game/tracks';
-import { Check, X, Gauge, Zap, Compass, Wind } from 'lucide-react';
+import { soundEngine } from '../audio/soundEngine';
+import { Check, X, Gauge, Zap, Compass, Wind, Volume2 } from 'lucide-react';
 
 interface CarSelectModalProps {
   selectedCar: CarStats;
@@ -19,9 +20,44 @@ export const CarSelectModal: React.FC<CarSelectModalProps> = ({
   onClose
 }) => {
   const [activeCarId, setActiveCarId] = useState<string>(selectedCar.id);
+  const [isPlayingSound, setIsPlayingSound] = useState<boolean>(false);
   const currentCar = AVAILABLE_CARS.find((c) => c.id === activeCarId) || AVAILABLE_CARS[0];
 
+  const handleTestEngineSound = () => {
+    soundEngine.init();
+    soundEngine.setSoundEnabled(true);
+    soundEngine.setEngineProfile(currentCar.engineType || 'v12_lambo');
+    setIsPlayingSound(true);
+
+    // Simulate authentic rev-up burst
+    let rev = 0;
+    const start = performance.now();
+    const interval = setInterval(() => {
+      const elapsed = (performance.now() - start) / 1000;
+      if (elapsed < 0.6) {
+        // Rev up to redline
+        rev = Math.min(1.0, elapsed / 0.6);
+        soundEngine.updateEngine(rev, 1.0, false, 1200 + rev * ((currentCar.redlineRpm || 8500) - 1200));
+      } else if (elapsed < 1.2) {
+        // Redline limiter throttle bounce
+        const bounce = Math.sin(elapsed * 35) > 0 ? 0.95 : 0.75;
+        soundEngine.updateEngine(bounce, 0.8, false, (currentCar.redlineRpm || 8500) * bounce);
+      } else if (elapsed < 1.8) {
+        // Throttle release backfire
+        if (elapsed < 1.35) soundEngine.playBackfire();
+        if (elapsed < 1.45) soundEngine.playBlowOffValve();
+        rev = Math.max(0.1, 1.0 - (elapsed - 1.2) / 0.6);
+        soundEngine.updateEngine(rev * 0.4, 0.0, false, 1000 + rev * 3000);
+      } else {
+        clearInterval(interval);
+        soundEngine.stopEngine();
+        setIsPlayingSound(false);
+      }
+    }, 30);
+  };
+
   const handleConfirm = () => {
+    soundEngine.stopEngine();
     onSelectCar(currentCar);
     onClose();
   };
@@ -122,9 +158,35 @@ export const CarSelectModal: React.FC<CarSelectModalProps> = ({
                 <div className="absolute left-0 inset-y-1 w-2 bg-slate-900 rounded-r-sm" />
               </div>
 
-              <div className="mt-4 text-center">
+              <div className="mt-4 text-center w-full px-2">
+                <div className="inline-block px-2.5 py-0.5 rounded-md bg-cyan-950/80 border border-cyan-500/40 text-[10px] font-black uppercase tracking-wider text-cyan-400 mb-1">
+                  {currentCar.brand || 'SUPERCAR'} • 3D MODEL
+                </div>
                 <h3 className="text-xl font-black text-white">{currentCar.name}</h3>
-                <p className="text-xs text-slate-400 mt-1 max-w-sm">{currentCar.tagline}</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">{currentCar.tagline}</p>
+
+                {/* Real-world Engine Specs & Audio Preview Button */}
+                {currentCar.engineSpecs && (
+                  <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
+                    <div className="text-left">
+                      <div className="text-[9px] uppercase font-bold text-amber-400">Spesifikasi Mesin Asli</div>
+                      <div className="text-xs font-mono font-bold text-slate-200">{currentCar.engineSpecs}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleTestEngineSound}
+                      disabled={isPlayingSound}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 ${
+                        isPlayingSound
+                          ? 'bg-amber-600 text-white animate-pulse'
+                          : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40'
+                      }`}
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                      {isPlayingSound ? 'Mengaum...' : 'Tes Suara Mesin'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

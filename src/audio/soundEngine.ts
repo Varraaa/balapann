@@ -3,6 +3,8 @@
  * High-performance, zero external assets required.
  */
 
+import { EngineSoundType } from '../types/game';
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -12,9 +14,14 @@ class SoundEngine {
   // Engine sound nodes
   private engineOsc: OscillatorNode | null = null;
   private engineSubOsc: OscillatorNode | null = null;
+  private turboWhistleOsc: OscillatorNode | null = null;
+  private turboWhistleGain: GainNode | null = null;
+  private rotaryBrapOsc: OscillatorNode | null = null;
+  private rotaryBrapGain: GainNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
   private engineGain: GainNode | null = null;
   private isEngineRunning: boolean = false;
+  private currentEngineType: EngineSoundType = 'v12_lambo';
 
   // Drift sound nodes
   private driftNoiseNode: AudioBufferSourceNode | null = null;
@@ -95,6 +102,23 @@ class SoundEngine {
     }
   }
 
+  public setEngineProfile(profile: EngineSoundType) {
+    this.currentEngineType = profile;
+    if (this.engineOsc) {
+      if (profile === 'v12_lambo' || profile === 'v8_ferrari') {
+        this.engineOsc.type = 'sawtooth';
+      } else if (profile === 'flat6_porsche') {
+        this.engineOsc.type = 'sawtooth';
+      } else if (profile === 'w16_bugatti') {
+        this.engineOsc.type = 'triangle';
+      } else if (profile === 'rotary_rx7') {
+        this.engineOsc.type = 'sawtooth';
+      } else {
+        this.engineOsc.type = 'sawtooth';
+      }
+    }
+  }
+
   // Engine Synth
   private setupEngineSound() {
     if (!this.ctx || !this.sfxGain) return;
@@ -103,6 +127,25 @@ class SoundEngine {
     this.engineSubOsc = this.ctx.createOscillator();
     this.engineFilter = this.ctx.createBiquadFilter();
     this.engineGain = this.ctx.createGain();
+
+    // Turbo Spool Whistle (McLaren, Bugatti, RX-7)
+    this.turboWhistleOsc = this.ctx.createOscillator();
+    this.turboWhistleGain = this.ctx.createGain();
+    this.turboWhistleOsc.type = 'sine';
+    this.turboWhistleOsc.frequency.setValueAtTime(2400, this.ctx.currentTime);
+    this.turboWhistleGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    this.turboWhistleOsc.connect(this.turboWhistleGain);
+    this.turboWhistleGain.connect(this.sfxGain);
+    this.turboWhistleOsc.start();
+
+    // Rotary "Brap-Brap" Idle LFO (Mazda RX-7)
+    this.rotaryBrapOsc = this.ctx.createOscillator();
+    this.rotaryBrapGain = this.ctx.createGain();
+    this.rotaryBrapOsc.type = 'square';
+    this.rotaryBrapOsc.frequency.setValueAtTime(5.5, this.ctx.currentTime); // 5.5 Hz brap pulse
+    this.rotaryBrapGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    this.rotaryBrapOsc.connect(this.rotaryBrapGain);
+    this.rotaryBrapOsc.start();
 
     this.engineOsc.type = 'sawtooth';
     this.engineSubOsc.type = 'triangle';
@@ -134,18 +177,132 @@ class SoundEngine {
   ) {
     if (!this.ctx || !this.isEngineRunning || !this.soundEnabled || !this.engineGain || !this.engineOsc || !this.engineFilter) return;
 
-    // RPM based frequency calculation (idle 1000 RPM -> 38Hz, 8500 RPM -> 195Hz)
-    const rpmRatio = Math.max(0, Math.min(1, (rpm - 1000) / 7500));
-    const baseFreq = 38 + rpmRatio * 165 + (isNitro ? 30 : 0);
-    const filterFreq = 180 + rpmRatio * 1600 + (throttle * 500) + (isNitro ? 800 : 0);
-    const targetGain = 0.10 + rpmRatio * 0.18 + (throttle * 0.10);
-
     const now = this.ctx.currentTime;
+    const type = this.currentEngineType;
+
+    let baseFreq = 45;
+    let filterFreq = 350;
+    let targetGain = 0.16;
+    let filterQ = 4.0;
+    let subRatio = 0.5;
+
+    switch (type) {
+      case 'v12_lambo': {
+        // --- LAMBORGHINI V12 SCREAM ---
+        // 6 firing pulses/rev, naturally aspirated, screaming high frequency wail
+        const rpmRatio = Math.max(0, Math.min(1, (rpm - 1000) / 7500));
+        baseFreq = 48 + rpmRatio * 220 + (isNitro ? 40 : 0);
+        filterFreq = 300 + rpmRatio * 3200 + (throttle * 800) + (isNitro ? 1000 : 0);
+        targetGain = 0.12 + rpmRatio * 0.22 + (throttle * 0.12);
+        filterQ = 5.2; // Screaming metallic resonance
+        subRatio = 0.45;
+        if (this.turboWhistleGain) this.turboWhistleGain.gain.setTargetAtTime(0, now, 0.05);
+        break;
+      }
+
+      case 'v8_ferrari': {
+        // --- FERRARI 488 FLAT-PLANE V8 ---
+        // 180-deg firing order, musical Italian soprano wail with razor-sharp rasp
+        const rpmRatio = Math.max(0, Math.min(1, (rpm - 1000) / 7000));
+        baseFreq = 44 + rpmRatio * 205 + (isNitro ? 35 : 0);
+        filterFreq = 280 + rpmRatio * 2900 + (throttle * 900) + (isNitro ? 900 : 0);
+        targetGain = 0.12 + rpmRatio * 0.20 + (throttle * 0.10);
+        filterQ = 6.0; // Razor-sharp overtone
+        subRatio = 0.35; // Minimal sub-drone
+        if (this.turboWhistleGain) {
+          const whistle = throttle > 0.4 ? (0.02 + rpmRatio * 0.05) : 0;
+          this.turboWhistleGain.gain.setTargetAtTime(whistle, now, 0.08);
+          this.turboWhistleOsc?.frequency.setTargetAtTime(2200 + rpmRatio * 1800, now, 0.08);
+        }
+        break;
+      }
+
+      case 'v8_mclaren': {
+        // --- MCLAREN TWIN-TURBO 4.0L V8 ---
+        // Cross-plane bass growl with twin-turbo jet whistle and wastegate whoosh
+        const rpmRatio = Math.max(0, Math.min(1, (rpm - 950) / 7550));
+        baseFreq = 36 + rpmRatio * 185 + (isNitro ? 30 : 0);
+        filterFreq = 220 + rpmRatio * 2400 + (throttle * 700) + (isNitro ? 800 : 0);
+        targetGain = 0.14 + rpmRatio * 0.19 + (throttle * 0.12);
+        filterQ = 3.5;
+        subRatio = 0.55;
+        if (this.turboWhistleGain) {
+          const whistle = throttle > 0.2 ? (0.05 + rpmRatio * 0.09) : 0;
+          this.turboWhistleGain.gain.setTargetAtTime(whistle, now, 0.05);
+          this.turboWhistleOsc?.frequency.setTargetAtTime(1800 + rpmRatio * 2400, now, 0.06);
+        }
+        break;
+      }
+
+      case 'flat6_porsche': {
+        // --- PORSCHE 911 GT3 RS (NATURALLY ASPIRATED BOXER-6) ---
+        // 9,000 RPM redline! Mechanical rasp, air-cooled growl, urgent high crescendo
+        const rpmRatio = Math.max(0, Math.min(1, (rpm - 950) / 8050));
+        baseFreq = 35 + rpmRatio * 230 + (isNitro ? 35 : 0);
+        filterFreq = 260 + rpmRatio * 3400 + (throttle * 950) + (isNitro ? 950 : 0);
+        targetGain = 0.12 + rpmRatio * 0.23 + (throttle * 0.12);
+        filterQ = 4.8;
+        subRatio = 0.65; // Distinctive opposed cylinder rasp
+        if (this.turboWhistleGain) this.turboWhistleGain.gain.setTargetAtTime(0, now, 0.05);
+        break;
+      }
+
+      case 'w16_bugatti': {
+        // --- BUGATTI CHIRON 8.0L QUAD-TURBO W16 ---
+        // 16 cylinders = 8 firing pulses/rev. Immense sub-bass power rumble & heavy turbine induction
+        const rpmRatio = Math.max(0, Math.min(1, (rpm - 900) / 6200));
+        baseFreq = 28 + rpmRatio * 135 + (isNitro ? 20 : 0);
+        filterFreq = 160 + rpmRatio * 1600 + (throttle * 600) + (isNitro ? 700 : 0);
+        targetGain = 0.18 + rpmRatio * 0.24 + (throttle * 0.15); // Powerful low-end presence
+        filterQ = 2.8;
+        subRatio = 0.85; // Massive low-frequency weight
+        if (this.turboWhistleGain) {
+          const whistle = throttle > 0.25 ? (0.04 + rpmRatio * 0.08) : 0;
+          this.turboWhistleGain.gain.setTargetAtTime(whistle, now, 0.06);
+          this.turboWhistleOsc?.frequency.setTargetAtTime(1400 + rpmRatio * 2000, now, 0.08);
+        }
+        break;
+      }
+
+      case 'rotary_rx7':
+      default: {
+        // --- MAZDA RX-7 FD3S TWIN-ROTOR ROTARY (13B-REW) ---
+        // Characteristic "brap-brap-brap" uneven idle pulse, sportbike-like high buzzing whine
+        const rpmRatio = Math.max(0, Math.min(1, (rpm - 850) / 7350));
+        const isIdling = rpm < 2100;
+
+        baseFreq = 54 + rpmRatio * 270 + (isNitro ? 45 : 0);
+        filterFreq = 340 + rpmRatio * 3500 + (throttle * 1000) + (isNitro ? 1100 : 0);
+
+        // Brap-brap modulation at idle / low revs
+        let brapFactor = 1.0;
+        if (isIdling && throttle < 0.2) {
+          // Rapid periodic stutter (brap brap pulse)
+          const brapTime = Math.sin(now * 28);
+          brapFactor = brapTime > 0.2 ? 1.4 : 0.45;
+          baseFreq *= (0.9 + Math.random() * 0.2); // slight uneven idle hunt
+        }
+
+        targetGain = (0.13 + rpmRatio * 0.22 + (throttle * 0.12)) * brapFactor;
+        filterQ = 5.5; // High buzzing rotary timbre
+        subRatio = 0.35;
+
+        // Rotary Sequential Turbo spool
+        if (this.turboWhistleGain) {
+          const whistle = throttle > 0.3 ? (0.05 + rpmRatio * 0.10) : 0;
+          this.turboWhistleGain.gain.setTargetAtTime(whistle, now, 0.05);
+          this.turboWhistleOsc?.frequency.setTargetAtTime(2200 + rpmRatio * 2600, now, 0.06);
+        }
+        break;
+      }
+    }
+
     this.engineOsc.frequency.setTargetAtTime(baseFreq, now, 0.04);
     if (this.engineSubOsc) {
-      this.engineSubOsc.frequency.setTargetAtTime(baseFreq * 0.5, now, 0.04);
+      this.engineSubOsc.frequency.setTargetAtTime(baseFreq * subRatio, now, 0.04);
     }
     this.engineFilter.frequency.setTargetAtTime(filterFreq, now, 0.05);
+    this.engineFilter.Q.setTargetAtTime(filterQ, now, 0.05);
     this.engineGain.gain.setTargetAtTime(targetGain, now, 0.04);
   }
 

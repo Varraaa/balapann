@@ -3,9 +3,9 @@
  */
 
 import React from 'react';
-import { CarState, GameMode, TrackTheme } from '../types/game';
+import { CameraViewMode, CarState, GameMode, TrackTheme } from '../types/game';
 import { Minimap } from './Minimap';
-import { Volume2, VolumeX, Zap, AlertTriangle, RotateCcw, Copy, Wifi, Thermometer } from 'lucide-react';
+import { Volume2, VolumeX, Zap, AlertTriangle, RotateCcw, Copy, Wifi, Thermometer, Camera } from 'lucide-react';
 
 interface HUDProps {
   playerCar: CarState;
@@ -19,6 +19,8 @@ interface HUDProps {
   onQuitToMenu: () => void;
   gameMode?: GameMode;
   roomCode?: string;
+  cameraMode?: CameraViewMode;
+  onCycleCamera?: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -32,7 +34,9 @@ export const HUD: React.FC<HUDProps> = ({
   onResetCar,
   onQuitToMenu,
   gameMode = 'single_player',
-  roomCode
+  roomCode,
+  cameraMode = 'chase',
+  onCycleCamera
 }) => {
   const isSplitScreen = gameMode === 'split_screen' && !!player2Car;
 
@@ -210,6 +214,19 @@ export const HUD: React.FC<HUDProps> = ({
             </span>
           </div>
 
+          {/* Car & Authentic Engine Spec Badge */}
+          <div
+            id="hud-car-engine-badge"
+            className="hidden lg:flex flex-col justify-center px-3.5 py-1.5 rounded-2xl bg-slate-900/85 backdrop-blur-md border border-slate-700/60 shadow-lg text-white"
+          >
+            <span className="text-[10px] font-black tracking-wide text-cyan-300 truncate max-w-[200px]">
+              {playerCar.name}
+            </span>
+            <span className="text-[9px] font-mono text-slate-400">
+              {playerCar.carStats.engineSpecs || 'Authentic Engine Audio'}
+            </span>
+          </div>
+
           {/* Online Mabar Room Code Indicator */}
           {roomCode && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono font-black pointer-events-auto">
@@ -240,6 +257,17 @@ export const HUD: React.FC<HUDProps> = ({
         {/* Right: Quick Controls & Minimap */}
         <div className="flex flex-col items-end gap-2 pointer-events-auto">
           <div className="flex items-center gap-2">
+            {onCycleCamera && (
+              <button
+                id="hud-btn-camera"
+                onClick={onCycleCamera}
+                title="Ganti Sudut Kamera 3D (C)"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/50 shadow-md backdrop-blur-sm transition-transform active:scale-95 text-xs font-bold font-mono"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span className="uppercase">{cameraMode}</span>
+              </button>
+            )}
             <button
               id="hud-btn-reset"
               onClick={onResetCar}

@@ -5,6 +5,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
+  CameraViewMode,
   CarState,
   CarStats,
   Checkpoint,
@@ -20,6 +21,7 @@ import { PhysicsEngine, CollisionEvent } from '../game/physics';
 import { AIController } from '../game/ai';
 import { ParticleSystem } from '../game/particles';
 import { GameRenderer } from '../game/renderer';
+import { ThreeRenderer } from '../game/three/ThreeRenderer';
 import { soundEngine } from '../audio/soundEngine';
 import { multiplayerManager } from '../game/multiplayer';
 import { HUD } from './HUD';
@@ -58,6 +60,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [countdown, setCountdown] = useState<number>(3);
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [soundActive, setSoundActive] = useState<boolean>(settings.soundEnabled);
+  const [cameraMode, setCameraMode] = useState<CameraViewMode>('chase');
 
   // Keep live references for the 60fps loop to avoid React re-render lag
   const stateRef = useRef<{
@@ -69,6 +72,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     nitroPickups: NitroPickup[];
     particleSystem: ParticleSystem;
     renderer: GameRenderer | null;
+    threeRenderer: ThreeRenderer | null;
     keys: Record<string, boolean>;
     touchInputs: {
       steer: number;
@@ -91,6 +95,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     nitroPickups: [],
     particleSystem: new ParticleSystem(),
     renderer: null,
+    threeRenderer: null,
     keys: {},
     touchInputs: { steer: 0, throttle: 0, brake: 0, drift: false, nitro: false },
     raceStarted: false,
@@ -289,7 +294,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     soundEngine.init();
     soundEngine.setSoundEnabled(settings.soundEnabled);
     soundEngine.setMusicEnabled(settings.musicEnabled);
+    soundEngine.setEngineProfile(selectedCar.engineType || 'v12_lambo');
+
+    if (stateRef.current.threeRenderer) {
+      stateRef.current.threeRenderer.loadTrack(theme, cps);
+    }
   }, [selectedCar, selectedTrack, settings, isSplitScreen, isOnline, player2CarStats]);
+
+  // Camera Switcher
+  const handleCycleCamera = useCallback(() => {
+    if (stateRef.current.threeRenderer) {
+      const nextMode = stateRef.current.threeRenderer.cycleCameraMode(1);
+      setCameraMode(nextMode);
+    }
+  }, []);
 
   // Reset player car back to nearest checkpoint if stuck
   const handleResetCar = useCallback(() => {
@@ -316,6 +334,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (e.code === 'KeyR') {
         handleResetCar();
       }
+      if (e.code === 'KeyC') {
+        handleCycleCamera();
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -328,7 +349,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [handleResetCar]);
+  }, [handleResetCar, handleCycleCamera]);
 
   // Connect online multiplayer callbacks
   useEffect(() => {
@@ -448,17 +469,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const renderer = new GameRenderer(ctx);
-    stateRef.current.renderer = renderer;
+    const threeRenderer = new ThreeRenderer(canvas);
+    stateRef.current.threeRenderer = threeRenderer;
+    if (stateRef.current.checkpoints.length > 0) {
+      threeRenderer.loadTrack(selectedTrack, stateRef.current.checkpoints);
+    }
 
     let hudSyncCounter = 0;
 
     const collisionCallback = (ev: CollisionEvent) => {
       soundEngine.playCrash(ev.intensity);
-      renderer.setScreenShake(ev.intensity * 0.8);
+      threeRenderer.setScreenShake(ev.intensity * 0.8, 1);
       stateRef.current.particleSystem.addSparks(ev.x, ev.y, Math.round(ev.intensity * 12));
     };
 
@@ -752,9 +773,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       particleSystem.update(dt);
 
-      // 10. Sound synchronization (Engine RPM & Turbo)
+      // 10. Sound synchronization (Authentic Engine RPM, Rotary Brap & Turbo)
       const normSpeed = playerCar.speed / playerCar.carStats.maxSpeed;
-      soundEngine.updateEngine(normSpeed, playerCar.throttleInput, playerCar.isNitroActive);
+      const redline = playerCar.carStats.redlineRpm || 8500;
+      const idle = playerCar.carStats.idleRpm || 1000;
+      const currentRpm = playerCar.telemetry?.rpm || (idle + normSpeed * (redline - idle));
+      soundEngine.updateEngine(normSpeed, playerCar.throttleInput, playerCar.isNitroActive, currentRpm);
       soundEngine.setDriftSound(playerCar.isDrifting && playerCar.speed > 70, normSpeed);
 
       // 11. Online Multiplayer Broadcast Synchronization (~30Hz)
@@ -766,42 +790,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // 12. Canvas Rendering (Split-Screen vs Single-Screen)
-      const width = canvas.width;
-      const height = canvas.height;
-
-      if (isSplitScreen && player2Car) {
-        renderer.renderSplitScreen(
-          width,
-          height,
-          selectedTrack,
-          checkpoints,
-          allCars,
-          playerCar,
-          player2Car,
-          obstacles,
-          nitroPickups,
-          particleSystem.particles,
-          particleSystem.skidMarks,
-          dt,
-          activeWeather
-        );
-      } else {
-        renderer.render(
-          width,
-          height,
-          selectedTrack,
-          checkpoints,
-          allCars,
-          playerCar,
-          obstacles,
-          nitroPickups,
-          particleSystem.particles,
-          particleSystem.skidMarks,
-          dt,
-          activeWeather
-        );
-      }
+      // 12. 3D WebGL Rendering (Single or Split-Screen Mabar)
+      threeRenderer.render(
+        canvas.clientWidth,
+        canvas.clientHeight,
+        allCars,
+        playerCar,
+        player2Car,
+        obstacles,
+        nitroPickups,
+        dt,
+        activeWeather,
+        isSplitScreen
+      );
 
       // 13. Sync React HUD state (~10fps throttled)
       hudSyncCounter++;
@@ -817,10 +818,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const handleResize = () => {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      threeRenderer.resize(rect.width, rect.height);
     };
 
     handleResize();
@@ -832,6 +830,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (stateRef.current.animationFrameId) {
         cancelAnimationFrame(stateRef.current.animationFrameId);
       }
+      threeRenderer.dispose();
+      stateRef.current.threeRenderer = null;
       soundEngine.stopEngine();
       soundEngine.setDriftSound(false);
       soundEngine.stopBGM();
@@ -868,6 +868,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           onQuitToMenu={onQuitToMenu}
           gameMode={gameMode}
           roomCode={roomCode}
+          cameraMode={cameraMode}
+          onCycleCamera={handleCycleCamera}
         />
       )}
 

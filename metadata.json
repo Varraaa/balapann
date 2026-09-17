@@ -1,6 +1,6 @@
 {
   "name": "Apex Racer 2D",
-  "description": "Game balap mobil 2D realistis dengan simulasi fisika transfer bobot, suhu ban & rem berpijar, mode Split-Screen 2 pemain dan Mabar Online WebRTC.",
+  "description": "Game balap mobil 3D realistis dengan grafis Three.js, suara mesin supercar asli (Lamborghini V12, Ferrari V8, McLaren Twin-Turbo, Porsche Boxer-6, Bugatti W16, RX-7 Rotary), track unik, serta mode Mabar Split-Screen dan Online P2P.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

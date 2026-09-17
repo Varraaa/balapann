@@ -7,15 +7,34 @@ export interface Vector2D {
   y: number;
 }
 
+export type EngineSoundType =
+  | 'v12_lambo'
+  | 'v8_ferrari'
+  | 'v8_mclaren'
+  | 'flat6_porsche'
+  | 'w16_bugatti'
+  | 'rotary_rx7';
+
+export type Car3DModelType =
+  | 'lamborghini'
+  | 'ferrari'
+  | 'mclaren'
+  | 'porsche'
+  | 'bugatti'
+  | 'rx7';
+
+export type CameraViewMode = 'chase' | 'hood' | 'cockpit' | 'helicopter';
+
 export interface CarStats {
   id: string;
   name: string;
+  brand: string;
   tagline: string;
   bodyColor: string;
   accentColor: string;
   glassColor: string;
   wheelColor: string;
-  maxSpeed: number;        // pixels per second (~500 - 800)
+  maxSpeed: number;        // pixels/units per second (~500 - 850)
   acceleration: number;    // acceleration rate
   handling: number;        // turn rate & responsiveness
   driftFactor: number;     // how easily it slides (0.88 - 0.96)
@@ -23,6 +42,11 @@ export interface CarStats {
   nitroStrength: number;   // boost multiplier
   unlocked: boolean;
   modelStyle: 'sports' | 'supercar' | 'muscle' | 'tuner' | 'prototype';
+  model3D: Car3DModelType;
+  engineType: EngineSoundType;
+  engineSpecs: string;
+  redlineRpm: number;
+  idleRpm: number;
 }
 
 export interface Obstacle {
@@ -79,6 +103,11 @@ export interface TrackTheme {
   obstacles: Obstacle[];
   nitroPickups: NitroPickup[];
   previewGradient: [string, string];
+  trackStyle?: 'monza' | 'tokyo' | 'monaco' | 'desert';
+  skyColor?: string;
+  hasTunnels?: boolean;
+  hasOcean?: boolean;
+  hasSkyscrapers?: boolean;
 }
 
 export type WeatherType = 'clear' | 'sunset' | 'night' | 'rain';
